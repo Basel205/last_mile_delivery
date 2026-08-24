@@ -1,19 +1,34 @@
 # System Design: Last-Mile Delivery Tracker
 
-This document provides an in-depth architectural overview of the Last-Mile Delivery Tracker, detailing the design decisions and algorithmic approaches behind the four core pillars of the platform: Rate Calculation, Zone Detection, Auto-Assignment, and Failed Delivery Handling.
+## 0. System Intent
+
+The platform is a role-based logistics control plane: customers create and track shipments, agents execute deliveries, and admins manage pricing and dispatch.
+
+```mermaid
+flowchart LR
+	Customer[Customer UI] -->|preview / create| API[NestJS REST API]
+	Agent[Agent UI] -->|status updates| API
+	Admin[Admin UI] -->|configuration / dispatch| API
+	API --> DB[(PostgreSQL via Prisma)]
+	API --> IndiaPost[India Post API]
+	API --> Events[Socket.IO gateway]
+	API --> Queue[Notification rows]
+	Queue --> Worker[30-second retry worker]
+	Events --> Customer
+	Events --> Agent
+	Events --> Admin
+```
+
+React/Vite is deployed on Vercel; NestJS and PostgreSQL run on Render. PostgreSQL is the system of record, with REST as the recovery path and Socket.IO as the realtime extension point.
 
 ## 1. Rate Calculation Engine
 
-The Rate Calculation Engine is designed around two non-negotiable principles: **financial precision** and **historical immutability**. 
-
-To prevent floating-point arithmetic errors commonly associated with JavaScript (e.g., `0.1 + 0.2 = 0.30000000000000004`), the engine strictly utilizes the `decimal.js` library for all monetary calculations. 
-
-The calculation pipeline executes as a pure, stateless function during both the pre-checkout "Preview Charge" phase and the final "Create Order" phase. This guarantees that the previewed price identically matches the final billed price. 
+The engine prioritizes **financial precision** and consistent preview/checkout results. `decimal.js` prevents floating-point currency errors, and the same pure function serves both paths.
 
 **Algorithmic Flow:**
 1. **Volumetric Weight Calculation:** The system applies industry-standard dimensional weight logic `(Length × Breadth × Height in cm) / 5000`. 
 2. **Billed Weight Determination:** It compares the physical Actual Weight against the Volumetric Weight and takes the `MAX()` of the two.
-3. **Temporal Rate Card Lookup:** Rate cards are never updated in place. Instead, they utilize `effectiveFrom` and `effectiveTo` timestamps. The engine queries the database for the active rate card matching the payload's `orderType` (B2B/B2C) and `zoneType` (INTRA/INTER). This append-only design ensures that historical orders retain their exact pricing context even if rates change tomorrow.
+3. **Temporal Rate Card Lookup:** The engine selects the latest active card by `orderType` (B2B/B2C), route type, and effective dates. The chosen card and computed amounts are stored on the order, preserving historical pricing.
 4. **Slab Calculation:** The engine subtracts the `baseWeightSlab` from the Billed Weight. If there is a remainder, it is multiplied by the `extraWeightCharge` and added to the `baseCharge`.
 5. **COD Surcharge:** If the payment type is Cash on Delivery, a secondary lookup retrieves the active COD configuration. The system dynamically applies either a `FLAT` fee addition or a `PERCENTAGE` multiplier against the base freight charge.
 
@@ -41,7 +56,7 @@ When a new order enters the `CREATED` state, the engine triggers a distribution 
 3. **Load Balancing:** If multiple agents qualify, the system sorts them by their active workload in ascending order, ensuring the least-burdened agent receives the dispatch. If no zone-matched agents are available, it falls back to a global pool of available agents.
 
 **Concurrency Guards:**
-To prevent race conditions where two simultaneous orders might be assigned to an agent who only has capacity for one, the assignment transaction utilizes PostgreSQL's `SELECT ... FOR UPDATE` row-level locking. This forces concurrent assignment sweeps to queue sequentially. Once assigned, a WebSocket event is immediately emitted via `Socket.io`, instantly updating the chosen agent's frontend dashboard without requiring a page refresh.
+To prevent race conditions where two simultaneous orders might be assigned to an agent who only has capacity for one, the assignment transaction utilizes PostgreSQL's `SELECT ... FOR UPDATE` row-level locking. This forces concurrent assignment sweeps to queue sequentially. The assignment is recorded as a system tracking event; Socket.IO provides the gateway for realtime order updates, while REST remains the recovery path after reconnects.
 
 ## 4. Failed Delivery & State Machine Handling
 
@@ -51,4 +66,5 @@ Failed delivery management is governed by a strict state machine to prevent orph
 1. **Agent Intervention:** An agent marks an order as `FAILED`, mandating a textual reason code (e.g., "Customer Not Available"). 
 2. **Audit & Notifications:** The system atomically increments the order's `deliveryAttempts` counter, pushes an immutable event into the `OrderTracking` ledger, and enqueues an asynchronous SMS/Email notification task to the background worker.
 3. **Threshold Enforcement:** The system checks the `deliveryAttempts` against the global `MAX_DELIVERY_ATTEMPTS` ceiling (default 3). 
-4. **Rescheduling:** If the cap is not breached, the customer dashboard unlocks the "Reschedule" UI. Upon submitting a new date, the order status transitions to `RESCHEDULED`, clearing the previous agent assignment and queuing the order for a fresh Auto-Assignment sweep on the morning of the new date. If the cap is breached, the order is permanently locked into an `RTO` (Return to Origin) state.
+4. **Rescheduling:** If the cap is not breached, a future date creates a `RESCHEDULED` order and a `RescheduleRequest`. After three failed attempts, customer rescheduling is rejected and support intervention is required.
+

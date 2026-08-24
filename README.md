@@ -1,6 +1,43 @@
 # Last-Mile Delivery Tracker
 
-A comprehensive, role-based platform for managing end-to-end logistics and last-mile delivery operations.
+> A production-shaped logistics platform for pricing, dispatch, tracking, and delivery operations.
+
+## Live Application
+
+- **Frontend:** [Open the deployed Vercel application](https://last-mile-delivery-hu9frwblz-basel205s-projects.vercel.app/)
+- **Backend API:** [Open the Render service](https://last-mile-delivery-lukw.onrender.com)
+- **Health check:** [Render `/health`](https://last-mile-delivery-lukw.onrender.com/health)
+- **API explorer:** [Render Swagger UI](https://last-mile-delivery-lukw.onrender.com/docs)
+
+The frontend calls the Render API directly. For a local or alternate deployment, set `VITE_API_URL` to the backend origin without a trailing slash.
+
+## What It Solves
+
+Last-mile operations need more than a CRUD order form. This platform brings pricing, dispatch, tracking, and exception handling into one role-based workflow:
+
+- Customers preview an exact charge before confirming a shipment.
+- Pricing accounts for B2B/B2C service, intra/inter-zone movement, dimensions, weight, and COD.
+- Pincodes resolve to operational zones through India Post data and are cached for repeat use.
+- Orders are assigned manually by an admin or automatically to an available, capacity-aware agent.
+- Every status change is recorded as an append-only tracking event.
+- Failed deliveries require a reason and can be rescheduled.
+- Notifications are persisted, retried, and processed by a background worker.
+
+## Roles and Workflows
+
+| Role | Primary workflow |
+| --- | --- |
+| Customer | Register, preview price, create orders, track progress, cancel before pickup, and reschedule failures |
+| Agent | View assigned deliveries, update statuses, capture notes and coordinates, and report failed attempts |
+| Admin | Filter orders, manage agents and zones, configure rates and COD rules, and override status when required |
+
+## Technology
+
+- **Frontend:** React 19, TypeScript, Vite, React Router, Tailwind CSS, Socket.IO client
+- **Backend:** NestJS, TypeScript, REST, Swagger/OpenAPI, Socket.IO
+- **Persistence:** PostgreSQL with Prisma ORM
+- **Security:** bcrypt, JWT access tokens, hashed rotating refresh tokens, Helmet, CORS, and role guards
+- **External resolution:** India Post public pincode API with database caching
 
 ## Setup Guide
 
