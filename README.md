@@ -98,3 +98,62 @@ The application uses PostgreSQL, managed via Prisma ORM. The schema acts as the 
 * **`OrderTracking`**: Append-only audit log. Every time an order changes status, a row is inserted here with a timestamp and optional notes.
 * **`Zone` & `ZonePincode`**: Defines regional delivery zones (North, South, East, West, Central). `ZonePincode` caches India Post API resolutions so future lookups for the same pincode are instant.
 * **`RateCard`**: Version-controlled pricing tables. Stores base rates, slabs, and `effectiveFrom`/`effectiveTo` dates to allow price changes without breaking historical orders.
+
+---
+
+## Full Project Directory Structure
+
+```text
+last_mile_delivery/
+├── SYSTEM_DESIGN.md                  # In-depth architectural breakdown (Rate Engine, Zones, Assignment, Failures)
+├── README.md                         # This file: Setup, API, Schema, and full directory tree
+├── backend/                          # NestJS Backend Application
+│   ├── .env.example                  # Template for required environment variables
+│   ├── nest-cli.json                 # NestJS CLI configuration and compiler options
+│   ├── package.json                  # Backend dependencies (Nest, Prisma, bcrypt, decimal.js)
+│   ├── prisma/                       # Database ORM layer
+│   │   ├── schema.prisma             # Core DB schema definitions (Users, Orders, Zones, RateCards)
+│   │   └── seed.ts                   # Bootstraps the DB with admin/agent accounts and default pricing
+│   └── src/                          # Backend source code
+│       ├── main.ts                   # Application entry point, configures CORS, Helmet, and Global Pipes
+│       ├── app.module.ts             # Root module aggregating all feature modules
+│       ├── admin/                    # Admin Feature Module
+│       │   └── admin.controller.ts   # Endpoints for managing agents, rate cards, and zones (Admin only)
+│       ├── assignment/               # Auto-Assignment Engine
+│       │   └── assignment.service.ts # Core logic for routing orders to the optimal available agent
+│       ├── auth/                     # Authentication Module
+│       │   ├── auth.controller.ts    # Login, Register, Logout endpoints
+│       │   └── auth.service.ts       # JWT generation, token rotation, password hashing
+│       ├── common/                   # Shared Utilities
+│       │   ├── jwt.guard.ts          # Global middleware enforcing valid Bearer tokens
+│       │   └── roles.guard.ts        # RBAC middleware restricting routes by User Role
+│       ├── notifications/            # Background Notification System
+│       │   └── notifications.service.ts # Simulates email/SMS queues for order lifecycle events
+│       ├── orders/                   # Orders & Logistics Module
+│       │   ├── order-status.service.ts  # State machine for transitioning orders (CREATED -> ASSIGNED -> IN_TRANSIT)
+│       │   ├── orders.controller.ts  # Endpoints for customers and agents to interact with orders
+│       │   ├── orders.service.ts     # Core business logic: zone resolution via India Post, idempotency
+│       │   └── rate-engine.ts        # Pure functions calculating volumetric weight and applying rate cards
+│       ├── realtime/                 # WebSockets Layer
+│       │   └── events.gateway.ts     # Socket.io gateway pushing live status updates to frontend clients
+│       └── users/                    # Users Module (Standard CRUD operations)
+└── frontend/                         # React + Vite Frontend Application
+    ├── index.html                    # HTML entry point containing root div
+    ├── package.json                  # Frontend dependencies (React, React Router, Tailwind v4)
+    ├── vite.config.ts                # Vite bundler configuration
+    └── src/                          # Frontend source code
+        ├── main.tsx                  # React DOM renderer entry point
+        ├── App.tsx                   # Top-level routing logic (conditionally renders based on user role)
+        ├── api.ts                    # Centralized typed Axios/Fetch client with auth interceptors
+        ├── index.css                 # Global CSS imports including Tailwind definitions
+        ├── components/               # Reusable UI components
+        │   ├── Icons.tsx             # Inline SVG iconography library
+        │   └── StatusBadge.tsx       # Standardized pill badges for rendering order states visually
+        ├── context/                  # React Context Providers
+        │   └── AuthContext.tsx       # Manages global user state, session storage, and login/logout functions
+        └── pages/                    # Route-level Page Components
+            ├── AdminPage.tsx         # Dashboard for admins: view all orders, manage agents, configure rates
+            ├── AgentPage.tsx         # Dashboard for agents: view assigned deliveries, update statuses
+            ├── CustomerPage.tsx      # Dashboard for customers: preview charges, create shipments, track history
+            └── LoginPage.tsx         # Universal sign-in and registration portal for all roles
+```
