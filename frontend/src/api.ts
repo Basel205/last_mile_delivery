@@ -1,4 +1,4 @@
-const BASE = 'https://last-mile-delivery-lukw.onrender.com';
+export const API_BASE = 'https://last-mile-delivery-lukw.onrender.com';
 
 function getToken(): string | null {
   try {
@@ -17,7 +17,7 @@ function authHeaders(): Record<string, string> {
 }
 
 async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: { ...authHeaders(), ...(options.headers || {}) },
   });
